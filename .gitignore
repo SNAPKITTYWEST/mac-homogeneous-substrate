@@ -1,0 +1,12 @@
+*.o
+*.a
+*.so
+*.dll
+*.exe
+*.ptx
+*.cubin
+_build/
+.idea/
+.vscode/
+*.image
+*.d

@@ -1,0 +1,131 @@
+REM ============================================================
+REM EXPERIMENTAL MACINTOSH BASIC STACK
+REM Homogeneous substrate: variables are memory cells
+REM ============================================================
+
+REM --- Memory map (conceptual $0000-$00FF) ---
+REM $0000-$000F : variables A-P
+REM $0010-$001F : temporaries
+REM $0020-$003F : stack
+REM $0040-$007F : float workspace
+REM $0080-$00FF : result / display buffer
+
+10 DEF FN PEEKF(ADDR) = PEEK(ADDR) + PEEK(ADDR+1)*256 + PEEK(ADDR+2)*65536 + PEEK(ADDR+3)*16777216
+20 DEF FN POKEF(ADDR,V) : POKE ADDR, V AND 255 : POKE ADDR+1, (V\256) AND 255 : POKE ADDR+2, (V\65536) AND 255 : POKE ADDR+3, (V\16777216) AND 255 : RETURN
+
+REM --- Core floating-point FLOP engine ---
+100 REM FLOAT PIPELINE: LOAD -> DECODE -> ALIGN -> OPERATE -> ROUND -> STORE
+110 DEF FN FADD(A,B) = A + B
+120 DEF FN FSUB(A,B) = A - B
+130 DEF FN FMUL(A,B) = A * B
+140 DEF FN FDIV(A,B) = A / B
+150 DEF FN FMA(A,B,C) = A * B + C
+160 DEF FN FSQRT(X) = SQR(X)
+170 DEF FN FABS(X) = ABS(X)
+180 DEF FN FNEG(X) = -X
+
+REM --- Memory cell abstraction ---
+200 DIM MEM(255)
+210 FOR I = 0 TO 255 : MEM(I) = 0 : NEXT I
+
+220 DEF FN CELL.GET(ADDR) = MEM(ADDR)
+230 DEF FN CELL.SET(ADDR,V) : MEM(ADDR) = V : RETURN
+240 DEF FN CELL.LOADF(ADDR) = FN PEEKF(ADDR)
+250 DEF FN CELL.STOREF(ADDR,V) : CALL FN POKEF(ADDR,V) : RETURN
+
+REM --- BASIC variable binding to memory ---
+300 A = 0 : B = 0 : C = 0 : D = 0 : E = 0
+310 X = 0 : Y = 0 : Z = 0
+320 PI = 3.141592653589793
+330 EUL = 2.718281828459045
+
+REM --- Classic expression that will later become Lisp form ---
+400 REM (+ (* A B) C) --> BASIC form
+410 A = 10.0
+420 B = 20.0
+430 C = 5.0
+440 TEMP = FN FMUL(A,B)
+450 RESULT = FN FADD(TEMP,C)
+460 PRINT "BASIC RESULT = "; RESULT
+
+REM --- Direct memory view of the same computation ---
+500 CALL FN CELL.STOREF(0, A) : REM $0000 = A
+510 CALL FN CELL.STOREF(4, B) : REM $0004 = B
+520 CALL FN CELL.STOREF(8, C) : REM $0008 = C
+530 TEMP = FN FMUL(FN CELL.LOADF(0), FN CELL.LOADF(4))
+540 CALL FN CELL.STOREF(12, TEMP)
+550 RESULT = FN FADD(FN CELL.LOADF(12), FN CELL.LOADF(8))
+560 CALL FN CELL.STOREF(16, RESULT)
+570 PRINT "MEMORY RESULT @ $0010 = "; FN CELL.LOADF(16)
+
+REM --- FLOP counter (conceptual) ---
+600 FLOP.ADD = 0 : FLOP.MUL = 0 : FLOP.FMA = 0 : FLOP.DIV = 0 : FLOP.SQRT = 0
+610 DEF FN COUNT.ADD(A,B) : FLOP.ADD = FLOP.ADD + 1 : RETURN FN FADD(A,B)
+620 DEF FN COUNT.MUL(A,B) : FLOP.MUL = FLOP.MUL + 1 : RETURN FN FMUL(A,B)
+630 DEF FN COUNT.FMA(A,B,C) : FLOP.FMA = FLOP.FMA + 1 : RETURN FN FMA(A,B,C)
+640 DEF FN COUNT.DIV(A,B) : FLOP.DIV = FLOP.DIV + 1 : RETURN FN FDIV(A,B)
+650 DEF FN COUNT.SQRT(X) : FLOP.SQRT = FLOP.SQRT + 1 : RETURN FN FSQRT(X)
+
+REM --- Vector / matrix FLOP kernels ---
+700 DIM V(63), W(63), R(63)
+710 FOR I = 0 TO 63
+720 V(I) = I * 0.5
+730 W(I) = 63 - I
+740 NEXT I
+
+750 REM SAXPY-style: R = a*V + W
+760 ALPHA = 2.5
+770 FOR I = 0 TO 63
+780 R(I) = FN COUNT.FMA(ALPHA, V(I), W(I))
+790 NEXT I
+
+800 REM Dot product
+810 DOT = 0
+820 FOR I = 0 TO 63
+830 DOT = FN COUNT.FMA(V(I), W(I), DOT)
+840 NEXT I
+850 PRINT "DOT = "; DOT
+
+REM --- Simple stack machine on top of the memory cells ---
+900 SP = 32 : REM stack pointer starts at $0020
+910 DEF FN PUSH(V) : CALL FN CELL.SET(SP, V) : SP = SP + 1 : RETURN
+920 DEF FN POP() : SP = SP - 1 : RETURN FN CELL.GET(SP)
+
+930 CALL FN PUSH(10)
+940 CALL FN PUSH(20)
+950 X = FN POP()
+960 Y = FN POP()
+970 CALL FN PUSH(FN COUNT.ADD(X,Y))
+980 PRINT "STACK TOP = "; FN POP()
+
+REM --- BASIC "object" simulation via memory descriptors ---
+1000 REM Descriptor: type | addr | size | flags
+1010 TYPE.NUM = 1 : TYPE.STR = 2 : TYPE.VEC = 3 : TYPE.FUN = 4
+1020 DEF FN MAKE.NUM(V) : ADDR = 64 : CALL FN CELL.STOREF(ADDR, V) : RETURN ADDR
+1030 DEF FN MAKE.VEC(BASE,LEN) : CALL FN CELL.SET(80, TYPE.VEC) : CALL FN CELL.SET(81, BASE) : CALL FN CELL.SET(82, LEN) : RETURN 80
+
+1040 N1 = FN MAKE.NUM(3.14159)
+1050 N2 = FN MAKE.NUM(2.0)
+1060 PRINT "OBJECT NUM1 = "; FN CELL.LOADF(N1)
+
+REM --- Event / window stub (classic Mac style) ---
+1100 REM Window record in memory
+1110 W.LEFT = 20 : W.TOP = 40 : W.RIGHT = 300 : W.BOTTOM = 200
+1120 CALL FN CELL.SET(200, W.LEFT)
+1130 CALL FN CELL.SET(201, W.TOP)
+1140 CALL FN CELL.SET(202, W.RIGHT)
+1150 CALL FN CELL.SET(203, W.BOTTOM)
+
+REM --- Cross-layer call stub (will be replaced by Lisp/Dylan later) ---
+1200 REM This BASIC routine is the entry point that higher layers can call
+1210 DEF FN BASIC.EVAL(EXPR.ID)
+1220 IF EXPR.ID = 1 THEN RETURN FN COUNT.FMA(A,B,C)
+1230 IF EXPR.ID = 2 THEN RETURN DOT
+1240 RETURN 0
+1250 END FN
+
+REM --- Main driver ---
+1300 PRINT "=== BASIC STACK READY ==="
+1310 PRINT "FLOP COUNTS: ADD="; FLOP.ADD; " MUL="; FLOP.MUL; " FMA="; FLOP.FMA
+1320 PRINT "Homogeneous core: CODE=DATA=MEMORY"
+1330 END
