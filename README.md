@@ -6,6 +6,14 @@ A ground-up reconstruction of the Macintosh computing heritage as a unified homo
 
 ---
 
+## Architecture Diagram
+
+![Experimental Macintosh Language / Memory Architecture](docs/architecture.jpg)
+
+*BASIC → RAW MEMORY → LISP OBJECTS → DYLAN FUNCTIONS → HOMOGENEOUS FUNCTORS → MACHINE EXECUTION*
+
+---
+
 ## Authorship
 
 **Ahmad Ali Parr wrote the C source by hand.** No AI-assisted generation was used for the C core, the GC, the JIT, or the compiler. These are Ahmad's own implementations.
